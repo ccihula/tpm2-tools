@@ -19,6 +19,12 @@ struct tpm_ecdhkeygen_ctx {
 
     TPM2B_ECC_POINT *Z;
     TPM2B_ECC_POINT *Q;
+
+    char *cp_hash_path;
+    TPM2B_DIGEST *cphash;
+    TPM2B_DIGEST cp_hash;
+    bool is_command_dispatch;
+
 };
 
 static tpm_ecdhkeygen_ctx ctx;
@@ -36,6 +42,9 @@ static bool on_option(char key, char *value) {
         case 'o':
             ctx.ecdh_Z_path = value;
             break;
+        case 0:
+            ctx.cp_hash_path = value;
+        break;
     };
 
     return true;
@@ -47,12 +56,13 @@ static bool tpm2_tool_onstart(tpm2_options **opts) {
       { "context", required_argument, NULL, 'c' },
       { "public",  required_argument, NULL, 'u' },
       { "output",  required_argument, NULL, 'o' },
+      { "cphash", required_argument, NULL, 0 },
     };
 
     *opts = tpm2_options_new("c:u:o:", ARRAY_LEN(topts), topts,
             on_option, NULL, 0);
 
-    return *opts != NULL;
+    return *opts != 0;
 }
 
 static tool_rc check_options(void) {
@@ -71,6 +81,20 @@ static tool_rc check_options(void) {
 }
 
 static tool_rc process_outputs(void) {
+
+    bool is_file_op_success = true;
+    if (ctx.cp_hash_path) {
+        is_file_op_success = files_save_digest(&ctx.cp_hash, ctx.cp_hash_path);
+
+        if (!is_file_op_success) {
+            return tool_rc_general_error;
+        }
+    }
+
+    tool_rc rc = tool_rc_success;
+    if (!ctx.is_command_dispatch) {
+        return rc;
+    }
 
     bool result = files_save_ecc_point(ctx.Q, ctx.ecdh_pub_path);
     if (!result) {
@@ -118,4 +142,4 @@ static tool_rc tpm2_tool_onrun(ESYS_CONTEXT *ectx, tpm2_option_flags flags) {
 }
 
 // Register this tool with tpm2_tool.c
-TPM2_TOOL_REGISTER("ecdhkeygen", tpm2_tool_onstart, tpm2_tool_onrun, NULL, NULL)
+TPM2_TOOL_REGISTER("ecdhkeygen", tpm2_tool_onstart, tpm2_tool_onrun, NULL, 0)
